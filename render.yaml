@@ -1,0 +1,25 @@
+# Render Blueprint for the FastAPI backend.
+# Render dashboard -> New -> Blueprint -> pick this repo -> Apply.
+services:
+  - type: web
+    name: nyaya-desk-api
+    runtime: python
+    plan: free
+    # Singapore is the closest Render region to the eCourts servers in India,
+    # which keeps the many sequential portal round-trips fast.
+    region: singapore
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    # Render injects $PORT; binding 0.0.0.0 is required for it to route traffic.
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      # Pin a mainstream Python rather than Render's moving default.
+      - key: PYTHON_VERSION
+        value: 3.12.7
+      # Tighten to the deployed frontend URL once it exists.
+      - key: CORS_ORIGINS
+        value: "*"
+      - key: SESSION_TTL_SECONDS
+        value: "900"

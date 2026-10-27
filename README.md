@@ -55,6 +55,7 @@ When `frontend/dist` exists, FastAPI serves the UI itself at http://127.0.0.1:80
 
 ```bash
 cd backend
+pip install -r requirements-dev.txt   # adds pytest + httpx
 python -m pytest -q
 ```
 
@@ -62,6 +63,16 @@ The tests cover:
 - the parser, run against a real portal response for CNR `DLND020000602007`
 - the client's token-rotation and error protocol, using a fake transport
 - the draft engine: Indian number-to-words, grammar, limitation and custody calculations, and `.docx` output
+
+### Deploying the backend to Render (free tier)
+
+The repo includes a Render Blueprint, [`render.yaml`](render.yaml).
+
+1. Open the Render dashboard → **New** → **Blueprint**, connect GitHub, and pick this repo.
+2. Click **Apply**. Render will build `backend/` with `pip install -r requirements.txt` and start it with `uvicorn app.main:app --host 0.0.0.0 --port $PORT`.
+3. Check that it's up at `https://<service>.onrender.com/api/health`; it should return `{"status":"ok"}`.
+
+The free tier sleeps after about 15 minutes idle, so the first request after that takes around 30–60 seconds. In-memory portal sessions are also lost when it sleeps, and the UI recovers by starting a new session.
 
 ---
 
