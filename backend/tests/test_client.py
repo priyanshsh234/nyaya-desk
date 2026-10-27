@@ -98,3 +98,23 @@ def test_case_number_requires_establishment_when_flagged():
         c.search_case_number(state_code="26", dist_code="8", complex_value="1080010@1,2@Y", est_code="",
                              case_type="1", case_no="233", year="2024", captcha="x")
     assert c.http.sent == []  # failed fast, no captcha wasted
+
+
+def test_connect_failure_is_explained():
+    """A refused/hung connection (e.g. portal blocking the host's network)
+    must surface as an actionable message, not a bare exception name."""
+    import requests
+    from app.ecourts.errors import PortalUnavailable
+
+    c = make_client([])
+
+    def boom(*a, **kw):
+        raise requests.ConnectTimeout()
+
+    c.http.post = boom
+    with pytest.raises(PortalUnavailable) as e:
+        c.districts("26")
+    assert "did not accept a connection" in e.value.message
+    assert "outside India" in e.value.hint
+    # connect timeout is short and separate from the (long) read timeout
+    assert c.timeout[0] < c.timeout[1]

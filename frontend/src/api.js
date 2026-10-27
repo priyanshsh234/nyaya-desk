@@ -48,6 +48,10 @@ async function request(path, { method = 'GET', body, raw = false } = {}) {
 
 const qs = (o) => new URLSearchParams(o).toString()
 
+// Cheap liveness probe: answers instantly once the server process is up,
+// so a slow reply here means "server waking up", not "portal is slow".
+export const health = () => request('/api/health')
+
 export const ecourts = {
   newSession: () => request('/api/ecourts/sessions', { method: 'POST' }),
   captchaUrl: (sid, nonce) => `${API_BASE}/api/ecourts/sessions/${sid}/captcha?n=${nonce}`,

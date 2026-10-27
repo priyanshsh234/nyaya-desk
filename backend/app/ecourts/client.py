@@ -72,7 +72,8 @@ class EcourtsClient:
 
     def __init__(self, base_url: str | None = None, timeout: float | None = None):
         self.base = (base_url or config.ECOURTS_BASE_URL).rstrip("/") + "/"
-        self.timeout = timeout or config.ECOURTS_TIMEOUT
+        # (connect, read): see config.py for why these differ.
+        self.timeout = (config.ECOURTS_CONNECT_TIMEOUT, timeout or config.ECOURTS_TIMEOUT)
         self.http = requests.Session()
         self.http.headers.update({
             "User-Agent": _BROWSER_UA,
@@ -97,11 +98,32 @@ class EcourtsClient:
     def _url(self, path: str) -> str:
         return self.base + path.lstrip("/")
 
+    @staticmethod
+    def _network_error(e: requests.RequestException) -> PortalUnavailable:
+        """Translate transport failures into something a user can act on.
+
+        A failure to even *connect* is different from a slow portal: in
+        practice it means eCourts is refusing this server's network. The
+        portal is reachable from Indian connections but timed out from a
+        US-hosted server, so we say that plainly instead of a bare
+        exception name.
+        """
+        if isinstance(e, (requests.ConnectTimeout, requests.ConnectionError)):
+            return PortalUnavailable(
+                "eCourts did not accept a connection from this server.",
+                hint="The portal appears to block networks outside India. Run the app locally "
+                     "(see README) or host the backend in an Indian region.",
+            )
+        if isinstance(e, requests.Timeout):
+            return PortalUnavailable("eCourts is responding too slowly right now.",
+                                     hint="The portal is often overloaded; please try again in a minute.")
+        return PortalUnavailable(f"Could not reach eCourts ({e.__class__.__name__}).")
+
     def _get(self, path: str, **kw) -> requests.Response:
         try:
             r = self.http.get(self._url(path), timeout=self.timeout, **kw)
         except requests.RequestException as e:
-            raise PortalUnavailable(f"Could not reach eCourts: {e.__class__.__name__}") from e
+            raise self._network_error(e) from e
         if r.status_code >= 500:
             raise PortalUnavailable(f"eCourts returned HTTP {r.status_code}")
         self.last_used = time.time()
@@ -140,7 +162,7 @@ class EcourtsClient:
             r = self.http.post(self._url("?p=" + endpoint), data=payload,
                                headers=headers, timeout=self.timeout)
         except requests.RequestException as e:
-            raise PortalUnavailable(f"Could not reach eCourts: {e.__class__.__name__}") from e
+            raise self._network_error(e) from e
         self.last_used = time.time()
         if r.status_code >= 500:
             raise PortalUnavailable(f"eCourts returned HTTP {r.status_code}")

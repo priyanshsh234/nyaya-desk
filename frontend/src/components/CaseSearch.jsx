@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { ecourts } from '../api'
+import { ecourts, health } from '../api'
 import * as I from '../icons'
 import Captcha from './Captcha'
 import CaseView from './CaseView'
@@ -21,6 +21,9 @@ export default function CaseSearch() {
   const [sid, setSid] = useState('')
   const [states, setStates] = useState([])
   const [booting, setBooting] = useState(true)
+  // 'server' while our backend wakes, 'portal' while it talks to eCourts.
+  // Separate phases so the UI never blames the wrong party for a wait.
+  const [phase, setPhase] = useState('server')
   const [nonce, setNonce] = useState(0)
 
   // ui
@@ -38,7 +41,8 @@ export default function CaseSearch() {
   const [f, setF] = useState({ state: '', district: '', complex: '', est: '', caseType: '', caseNo: '', year: '' })
   const [opts, setOpts] = useState({ districts: [], complexes: [], ests: [], caseTypes: [] })
   const [loadingOpt, setLoadingOpt] = useState('')
-  const waking = useSlow(booting)
+  const waking = useSlow(booting && phase === 'server')
+  const portalSlow = useSlow(booting && phase === 'portal', 2500)
 
   const refreshCaptcha = () => {
     setCaptcha('')
@@ -49,6 +53,9 @@ export default function CaseSearch() {
     setBooting(true)
     setError(null)
     try {
+      setPhase('server')
+      await health()
+      setPhase('portal')
       const s = await ecourts.newSession()
       setSid(s.session_id)
       setStates(s.states)
@@ -266,6 +273,13 @@ export default function CaseSearch() {
           {waking && (
             <div style={{ marginBottom: 18 }}>
               <WakingNotice />
+            </div>
+          )}
+          {portalSlow && (
+            <div style={{ marginBottom: 18 }}>
+              <Alert kind="info" title="Connecting to eCourts…">
+                Opening a session with the eCourts portal. It can be slow at busy times.
+              </Alert>
             </div>
           )}
 

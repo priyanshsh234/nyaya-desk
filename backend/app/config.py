@@ -10,9 +10,13 @@ ECOURTS_BASE_URL = os.getenv(
     "ECOURTS_BASE_URL", "https://services.ecourts.gov.in/ecourtindia_v6/"
 )
 
-# The portal is slow and occasionally hangs; a hard timeout keeps a stuck
-# upstream call from tying up a worker thread forever.
+# The portal is slow to *respond* (searches can take 20s+) but a healthy one
+# accepts a TCP connection in well under a second. So we use a generous read
+# timeout and a short connect timeout: if the connection itself hangs (e.g.
+# the portal refusing traffic from this server's network), fail in seconds
+# rather than leaving the user staring at a spinner for 45s.
 ECOURTS_TIMEOUT = float(os.getenv("ECOURTS_TIMEOUT", "45"))
+ECOURTS_CONNECT_TIMEOUT = float(os.getenv("ECOURTS_CONNECT_TIMEOUT", "10"))
 
 # A portal session (cookie + rotating app_token) is only useful for a few
 # minutes. We drop idle sessions after this many seconds to bound memory.
