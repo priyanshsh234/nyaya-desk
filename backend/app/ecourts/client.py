@@ -13,7 +13,9 @@ js/searchByCaseStatus.js):
    use / rotating: you must send the latest one on the next request. On
    error responses the token may instead appear after a `#####` delimiter
    or inside a non-JSON body, which `ajaxCall` also scrapes -- we mirror
-   that logic in `_absorb_token`.
+   that logic in `_absorb_token`. Each AJAX call must also carry a custom
+   header pair whose name and value rotate per session; they live in the
+   session's own js/components.js (see `_discover_ajax_headers`).
 3. Captcha: GET vendor/securimage/securimage_show.php?<random> returns a PNG
    whose answer is stored in the PHP session. So the image MUST be fetched
    with the same cookies as the subsequent search, which is why one
@@ -51,10 +53,19 @@ from .errors import (
 
 log = logging.getLogger(__name__)
 
-# Mirror what the portal's jQuery `ajaxCall` sends. The two odd headers are
-# hard-coded in components.js; replicating them keeps our requests identical
-# to the browser's.
-_AJAX_DELIMITER = "zdfsfrte654"
+# The portal's jQuery `ajaxCall` adds a custom header pair to every AJAX call:
+#     headers: { "delimeter": <value>, "<RandomName>": <value> }
+# Both the second header's NAME and the shared VALUE rotate per session: each
+# session is served its own `js/components.js?v=<n>` with fresh values, and the
+# server rejects any AJAX call whose pair doesn't match ("Invalid Request").
+# A hard-coded pair therefore can never work. We read the pair from the
+# session's own components.js during bootstrap, exactly as the browser does
+# by executing that script. (Confirmed by capturing a real browser request:
+# the pair differed between two sessions minutes apart.)
+_COMPONENTS_SRC = re.compile(r"""src=['"]([^'"]*js/components\.js[^'"]*)['"]""")
+_DELIM_VALUE = re.compile(r"""var\s+delimeter\s*=\s*['"]([^'"]+)['"]""")
+_HEADERS_BLOCK = re.compile(r"headers\s*:\s*\{([^}]*)\}", re.S)
+_HEADER_USING_DELIM = re.compile(r"""['"]?([A-Za-z0-9_-]+)['"]?\s*:\s*delimeter\b""")
 _BROWSER_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
@@ -80,6 +91,8 @@ class EcourtsClient:
             "Accept-Language": "en-US,en;q=0.9",
         })
         self.token = ""
+        # Per-session custom AJAX headers, discovered in bootstrap().
+        self.ajax_headers: dict[str, str] = {}
         self.lock = threading.Lock()
         self.created_at = time.time()
         self.last_used = time.time()
@@ -150,13 +163,14 @@ class EcourtsClient:
         to inspect `errormsg` themselves.
         """
         payload = {**fields, "ajax_req": "true", "app_token": self.token}
+        origin = self.base.split("/ecourtindia")[0]
         headers = {
             "X-Requested-With": "XMLHttpRequest",
             "Accept": "application/json, text/javascript, */*; q=0.01",
-            "Origin": self.base.split("/ecourtindia")[0],
-            "Referer": self._url("?p=casestatus/index"),
-            "delimeter": _AJAX_DELIMITER,
-            "Herjher46": _AJAX_DELIMITER,
+            "Origin": origin,
+            # The portal's referrer policy trims Referer to the bare origin.
+            "Referer": origin + "/",
+            **self.ajax_headers,
         }
         try:
             r = self.http.post(self._url("?p=" + endpoint), data=payload,
@@ -212,6 +226,23 @@ class EcourtsClient:
             raise PortalUnavailable("Could not initialise an eCourts session (no app_token on page).")
         self.token = m.group(1)
         self.states = parser.parse_select(r.text, "sess_state_code")
+        self.ajax_headers = self._discover_ajax_headers(r.text)
+
+    def _discover_ajax_headers(self, page_html: str) -> dict[str, str]:
+        """Fetch this session's components.js and extract the custom header
+        pair its `ajaxCall` sends (see the comment at the top of the module).
+        Must use this session's cookies: the values are session-specific."""
+        m = _COMPONENTS_SRC.search(page_html)
+        if not m:
+            raise PortalUnavailable("eCourts page layout changed: components.js not found.")
+        src = m.group(1)
+        # The page uses root-relative paths like /ecourtindia_v6/js/components.js?v=...
+        url = (self.base.split("/ecourtindia")[0] + src) if src.startswith("/") else self._url(src)
+        try:
+            js = self.http.get(url, timeout=self.timeout).text
+        except requests.RequestException as e:
+            raise self._network_error(e) from e
+        return parse_ajax_headers(js)
 
     def captcha_png(self) -> bytes:
         # Random query string defeats caching, exactly like the portal's
@@ -373,6 +404,23 @@ class EcourtsClient:
             fields["court_complex_code"] = ctx["court_complex_code"]
         data = self.post("home/viewBusiness", fields)
         return parser.parse_business(data.get("data_list") or "")
+
+
+def parse_ajax_headers(js: str) -> dict[str, str]:
+    """From components.js source, return {"delimeter": v, "<Name>": v}.
+
+    Only the `ajaxCall` function matters, so we start from its `var delimeter`
+    assignment and take the first `headers: {...}` block after it; every key
+    in that block whose value is the `delimeter` variable gets the value.
+    """
+    vm = _DELIM_VALUE.search(js)
+    if not vm:
+        raise PortalUnavailable("eCourts changed its request format (no AJAX header value found).")
+    block = _HEADERS_BLOCK.search(js, vm.end())
+    names = _HEADER_USING_DELIM.findall(block.group(1)) if block else []
+    if not names:
+        raise PortalUnavailable("eCourts changed its request format (no AJAX header names found).")
+    return {name: vm.group(1) for name in names}
 
 
 def normalise_cnr(cnr: str) -> str:

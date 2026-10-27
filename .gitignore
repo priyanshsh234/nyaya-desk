@@ -13,3 +13,6 @@ frontend/dist/
 .env
 .DS_Store
 .vscode/
+
+# browser network captures (contain session cookies)
+*.har

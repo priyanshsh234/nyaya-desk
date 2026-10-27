@@ -118,3 +118,39 @@ def test_connect_failure_is_explained():
     assert "outside India" in e.value.hint
     # connect timeout is short and separate from the (long) read timeout
     assert c.timeout[0] < c.timeout[1]
+
+
+def test_ajax_headers_parsed_from_components_js():
+    """The custom header pair rotates per session; it must be read from the
+    session's components.js (shape copied from the live file)."""
+    from app.ecourts.client import parse_ajax_headers
+
+    js = '''function ajaxCall(jsonobj)
+{
+	var delimeter="sjdfhsrte43";
+	var base_url=$('#base_url').val();
+	$.ajax({
+		type: "POST",
+		data:postdata+'&ajax_req='+true+'&app_token='+token,
+		headers: {
+        "delimeter": delimeter,
+			"Zgfrt54":delimeter
+		},
+	});
+}'''
+    assert parse_ajax_headers(js) == {"delimeter": "sjdfhsrte43", "Zgfrt54": "sjdfhsrte43"}
+
+
+def test_ajax_headers_sent_on_every_post():
+    c = make_client([{"status": 1, "dist_list": "", "app_token": "t1"}])
+    c.ajax_headers = {"delimeter": "v", "Abc12": "v"}
+    sent_headers = {}
+
+    def post(url, data=None, headers=None, timeout=None):
+        sent_headers.update(headers)
+        return FakeResp({"status": 1, "dist_list": "", "app_token": "t1"})
+
+    c.http.post = post
+    c.districts("26")
+    assert sent_headers["delimeter"] == "v" and sent_headers["Abc12"] == "v"
+    assert sent_headers["X-Requested-With"] == "XMLHttpRequest"
