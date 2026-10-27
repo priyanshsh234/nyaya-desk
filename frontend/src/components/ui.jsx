@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useMemo, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import * as I from '../icons'
 
 export function Spinner() {
@@ -35,6 +35,29 @@ export function Alert({ kind = 'error', title, children, onClose }) {
         </button>
       )}
     </div>
+  )
+}
+
+// True once `active` has stayed true for `ms`. Used to explain long waits:
+// the free Render backend sleeps when idle and takes ~30-60s to wake.
+export function useSlow(active, ms = 4000) {
+  const [slow, setSlow] = useState(false)
+  useEffect(() => {
+    if (!active) {
+      setSlow(false)
+      return
+    }
+    const t = setTimeout(() => setSlow(true), ms)
+    return () => clearTimeout(t)
+  }, [active, ms])
+  return slow
+}
+
+export function WakingNotice() {
+  return (
+    <Alert kind="info" title="Waking up the server…">
+      The free backend sleeps when idle and can take up to a minute to start. Hang tight.
+    </Alert>
   )
 }
 

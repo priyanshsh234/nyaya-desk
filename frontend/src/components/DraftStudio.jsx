@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { downloadBlob, drafts } from '../api'
 import * as I from '../icons'
-import { Alert, Field, Skeleton, Spinner, useToast } from './ui'
+import { Alert, Field, Skeleton, Spinner, WakingNotice, useSlow, useToast } from './ui'
 
 // The form is generated entirely from the backend's template schema
 // (GET /api/drafts/templates), so adding a template in Python needs no UI
@@ -101,6 +101,7 @@ export default function DraftStudio() {
   const [live, setLive] = useState(false)
   const [formErr, setFormErr] = useState('')
   const timer = useRef()
+  const waking = useSlow(!templates && !loadErr)
 
   useEffect(() => {
     drafts.templates()
@@ -181,9 +182,12 @@ export default function DraftStudio() {
   if (loadErr) return <Alert title="Could not load templates">{loadErr.message}</Alert>
   if (!templates)
     return (
-      <div className="templates">
-        {[0, 1, 2, 3].map((i) => <Skeleton key={i} h={150} style={{ borderRadius: 14 }} />)}
-      </div>
+      <>
+        {waking && <div style={{ marginBottom: 16 }}><WakingNotice /></div>}
+        <div className="templates">
+          {[0, 1, 2, 3].map((i) => <Skeleton key={i} h={150} style={{ borderRadius: 14 }} />)}
+        </div>
+      </>
     )
 
   return (

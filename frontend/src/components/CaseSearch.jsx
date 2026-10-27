@@ -3,7 +3,7 @@ import { ecourts } from '../api'
 import * as I from '../icons'
 import Captcha from './Captcha'
 import CaseView from './CaseView'
-import { Alert, Field, Skeleton, Spinner } from './ui'
+import { Alert, Field, Skeleton, Spinner, WakingNotice, useSlow } from './ui'
 
 const EXAMPLE_CNR = 'DLND020000602007'
 // Matches the assignment's example; resolved by *label* against live
@@ -38,6 +38,7 @@ export default function CaseSearch() {
   const [f, setF] = useState({ state: '', district: '', complex: '', est: '', caseType: '', caseNo: '', year: '' })
   const [opts, setOpts] = useState({ districts: [], complexes: [], ests: [], caseTypes: [] })
   const [loadingOpt, setLoadingOpt] = useState('')
+  const waking = useSlow(booting)
 
   const refreshCaptcha = () => {
     setCaptcha('')
@@ -261,6 +262,12 @@ export default function CaseSearch() {
               </button>
             </div>
           </div>
+
+          {waking && (
+            <div style={{ marginBottom: 18 }}>
+              <WakingNotice />
+            </div>
+          )}
 
           {error && (
             <div style={{ marginBottom: 18 }}>

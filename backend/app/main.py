@@ -34,6 +34,10 @@ app.add_middleware(
     allow_origins=config.CORS_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
+    # When the frontend is on another origin (Vercel -> Render), browsers hide
+    # non-safelisted headers from JS; expose this one so .docx downloads keep
+    # their real filename.
+    expose_headers=["Content-Disposition"],
 )
 
 
